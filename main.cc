@@ -18,15 +18,15 @@ struct termios original_tio;
 
 void disableBuffering()
 {
-    tcgetattr( STDIN_FILENO, &original_tio) ;
-    struct termios new_tio = original_tio;
-    new_tio.c_lflag &= ~ICANON & ~ECHO;
-    tcsetattr( STDIN_FILENO, TCSANOW, &new_tio );
+	tcgetattr( STDIN_FILENO, &original_tio);
+	struct termios new_tio = original_tio;
+	new_tio.c_lflag &= ~ICANON & ~ECHO;
+	tcsetattr( STDIN_FILENO, TCSANOW, &new_tio );
 }
 
 void restoreBuffering()
 {
-    tcsetattr( STDIN_FILENO, TCSANOW, &original_tio );
+	tcsetattr( STDIN_FILENO, TCSANOW, &original_tio );
 }
 
 void handleInterrupt( int signal )

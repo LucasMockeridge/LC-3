@@ -108,8 +108,8 @@ CPU::loadProgram( const char* filePath )
 	}
 
 	f.seekg (0, f.end);
-    int length = f.tellg();
-    f.seekg (0, f.beg);
+	int length = f.tellg();
+	f.seekg (0, f.beg);
 
 	if ( length > MEM_SIZE * 2 )
 	{
@@ -129,7 +129,7 @@ CPU::loadProgram( const char* filePath )
 	for ( int i = 0; i < round( ( length - 2 ) / 2.0 ); i++ )
 	{
 		*p = toLittleEndian( *p );
-        p++;		
+		p++;		
 	}
 }
 
