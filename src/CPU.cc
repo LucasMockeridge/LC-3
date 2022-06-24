@@ -1,8 +1,40 @@
 #include "CPU.hh"
 #include <iostream>
-#include <unistd.h>
 #include <fstream>
 #include <cmath>
+
+#define WINDOWS __CYGWIN__ || _WIN32
+
+#if WINDOWS
+
+#include <Windows.h>
+#include <conio.h>
+
+bool
+Memory::checkSTDIN()
+{
+	HANDLE hStdin = GetStdHandle( STD_INPUT_HANDLE );
+	return WaitForSingleObject( hStdin, 1000 ) == WAIT_OBJECT_0 && _kbhit();
+}
+
+#else
+
+#include <unistd.h>
+
+bool
+Memory::checkSTDIN()
+{
+	fd_set readfds;
+	FD_ZERO( &readfds );
+	FD_SET( STDIN_FILENO, &readfds );
+
+	struct timeval timeout;
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+	return select( 1, &readfds, NULL, NULL, &timeout ) != 0;
+}
+
+#endif
 
 using std::cerr, std::cout, std::ifstream, std::round, std::ios;
 
@@ -13,7 +45,7 @@ enum
 	N = 4,
 	KBSR = 0xFE00,
 	KBDR = 0xFE02,
-	PC_START = 0x300,
+	PC_START = 0x3000,
 	PSR_START = 0x700,
 };
 
@@ -65,18 +97,6 @@ Memory::operator[]( const unsigned short addr )
 	return mem[addr];
 }
 
-bool
-Memory::checkSTDIN()
-{
-	fd_set readfds;
-	FD_ZERO( &readfds );
-	FD_SET( STDIN_FILENO, &readfds );
-
-	struct timeval timeout;
-	timeout.tv_sec = 0;
-	timeout.tv_usec = 0;
-	return select( 1, &readfds, NULL, NULL, &timeout ) != 0;
-}
 
 CPU::CPU() : halted( false ), PC( PC_START ), PSR( PSR_START ) { }
 
@@ -231,8 +251,6 @@ CPU::handleTrap( const unsigned short instr )
 		}
 		case HALT:
 		{
-			cout << "HALT\n";
-			cout.flush();
 			halted = true;
 			break;
 		}
@@ -242,7 +260,7 @@ CPU::handleTrap( const unsigned short instr )
 void
 CPU::halt()
 {
-	handleTrap( 0xF025 );
+	halted = true;
 }
 
 void

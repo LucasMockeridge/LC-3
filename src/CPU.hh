@@ -17,6 +17,8 @@ class CPU
 {
 	public:
 		CPU();
+		void setUp();
+		void cleanUp();
 		unsigned short fetchInstr(); 
 		void handleInstr( const unsigned short instr );
 		void halt();
