@@ -19,4 +19,4 @@ The implementation of the virtual machine was based on Justin Meiners' [guide](h
 
 ### Assembler
     usage: ./main a [b ...]
-           a, b, etc.: LC-3 assembly program
+           a, b, etc.: path to an LC-3 assembly program
