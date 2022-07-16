@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <stdexcept>
 
 #define WINDOWS __CYGWIN__ || _WIN32
 
@@ -35,8 +36,6 @@ Memory::checkSTDIN()
 }
 
 #endif
-
-using std::cerr, std::cout, std::ifstream, std::round, std::ios;
 
 enum
 {
@@ -118,13 +117,12 @@ CPU::toLittleEndian( const unsigned short val )
 void
 CPU::loadProgram( const char* filePath )
 {
-	ifstream f;
-	f.open( filePath, ios::binary );
+	std::ifstream f;
+	f.open( filePath, std::ios::binary );
 	
 	if ( !f.is_open() )
 	{
-		cerr << "Can't open: " << filePath << "\n";
-		return;
+		throw std::runtime_error( "Can not open: " + std::string( filePath ) );
 	}
 
 	f.seekg (0, f.end);
@@ -133,8 +131,7 @@ CPU::loadProgram( const char* filePath )
 
 	if ( length > MEM_SIZE * 2 )
 	{
-		cerr << filePath << " is too large\n";
-		return;
+		throw std::runtime_error( std::string( filePath ) + " is too large" );
 	}  
 
 	unsigned short origin[1];
@@ -207,8 +204,8 @@ CPU::handleTrap( const unsigned short instr )
 		}
 		case OUT:
 		{
-			cout << static_cast<char>( GPR[0] );
-			cout.flush();
+			std::cout << static_cast<char>( GPR[0] );
+			std::cout.flush();
 			break;
 		}
 		case PUTS:
@@ -216,18 +213,18 @@ CPU::handleTrap( const unsigned short instr )
 			unsigned short* c = &mem[0] + GPR[0];
 			while ( *c )
 			{
-				cout << static_cast<char>( *c );
+				std::cout << static_cast<char>( *c );
 				c++;
 			} 
-			cout.flush();
+			std::cout.flush();
 			break;
 		}
 		case IN:
 		{
-			cout << "Enter a character: ";
+			std::cout << "Enter a character: ";
 			char c = getchar();
-			cout << c;
-			cout.flush();
+			std::cout << c;
+			std::cout.flush();
 			GPR[0] = static_cast<unsigned short>( c );
 			setcc( GPR[0] );
 			break;
@@ -238,15 +235,15 @@ CPU::handleTrap( const unsigned short instr )
 			while ( *c )
 			{
 				char c1 = static_cast<char>( *c );
-				cout << c1;
+				std::cout << c1;
 				char c2 = static_cast<char>( *c >> 8 );
 				if ( c2 )
 				{
-					cout << c2;
+					std::cout << c2;
 				}
 				c++;
 			}
-			cout.flush();
+			std::cout.flush();
 			break;
 		}
 		case HALT:
@@ -348,13 +345,12 @@ CPU::handleInstr( const unsigned short instr )
 			{
 				PC = mem[GPR[6]++];
 				PSR = mem[GPR[6]++];
+				break;
 			}
 			else
 			{
-				cerr << "PRIVILEGE MODE VIOLATION\n";
-				halt();	
+				throw std::runtime_error( "Privilege Mode Violation" );
 			}
-			break;
 		}
 		case NOT:
 		{
@@ -388,9 +384,7 @@ CPU::handleInstr( const unsigned short instr )
 		}
 		default:
 		{
-			cerr << "ILLEGAL OPCODE\n";
-			halt();
-			break;
+			throw std::runtime_error( "Invalid Opcode: " + std::to_string( opcode ) );
 		}
 	}
 	
