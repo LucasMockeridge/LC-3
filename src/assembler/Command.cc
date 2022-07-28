@@ -8,7 +8,7 @@ Command::Command( const std::string str, int x, int y )
 	tokens = toTokens( cmd );
 	isLabel = checkLabel( tokens[0] );
 	const int i = isLabel ? 1 : 0; 
-	isDirective = checkDirective( tokens[0 + i] );	
+	isDirective = checkDirective( tokens[0 + i] );
 }
 
 std::vector<std::string>

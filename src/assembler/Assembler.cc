@@ -77,38 +77,6 @@ Assembler::isNotWhiteSpace( const std::string& str )
 	return false;
 }
 
-std::vector<std::string>
-Assembler::makeTokens( const std::string& str ) 
-{
-	std::vector<std::string> v;
-	std::string s;
-	bool inString = false;
-	for ( const char& c : str )
-	{
-		if ( c == '\'' || c == '\"' )
-		{
-			inString = !inString;
-		}
-		else if ( ( c != '\t' && c != ' ' && c != ',' ) || inString )
-		{
-			s.push_back( c );
-		}
-		else
-		{
-			if ( s.length() > 0 && !inString )
-			{
-				v.push_back( s );
-				s.clear();
-			}
-		}
-	}	
-	if ( s.length() > 0 && !inString )
-	{
-		v.push_back( s );
-	}
-	return v;
-}
-
 void
 Assembler::toTokens()
 {
@@ -369,7 +337,7 @@ Assembler::handleTokens( const Command& cmd, std::ofstream& stream )
 		}
 
 		toLittleEndian( val );
-		stream.write( reinterpret_cast<const char*>( &val ),  sizeof val );	
+		stream.write( reinterpret_cast<const char*>( &val ),  sizeof val );
 	}
 }
 

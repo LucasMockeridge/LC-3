@@ -18,7 +18,6 @@ class Assembler
 		std::map<std::string, int> symbolTable;
 		std::istream& getCommand( std::istream& stream, std::string& str );
 		bool isNotWhiteSpace( const std::string& str );
-		std::vector<std::string> makeTokens( const std::string& str ); 
 		void checkLiteral( const Command& cmd, const std::string& s );
 		void checkOrig();
 		void checkEnd();
