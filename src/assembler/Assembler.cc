@@ -115,17 +115,22 @@ Assembler::toTokens()
 	std::ifstream f;
 	f.open( filename );
 	std::string str;
+	int x = 1;
+	int y = 0;
 	while ( getCommand( f, str ) )
 	{
 		if ( isNotWhiteSpace( str ) )
 		{
-			tokens.push_back( makeTokens( str ) );
+			Command cmd = Command( str, x, y );
+			tokens.push_back( cmd );
+			y++;
 		}
+		x++;
 	}
 }
 
 void
-Assembler::checkLiteral( const std::string& s )
+Assembler::checkLiteral( const Command& cmd, const std::string& s )
 {
 	try 
 	{ 
@@ -139,13 +144,13 @@ Assembler::checkLiteral( const std::string& s )
 		}
 		catch( std::invalid_argument const& ex )
 		{
-			throw std::runtime_error( "Invalid literal: " + s ); 
+			errorMessage( cmd, "Invalid literal: " + s ); 
 		}
 	}
 }
 
 int
-Assembler::convertNumber( const std::string& s )
+Assembler::convertNumber( const Command& cmd, const std::string& s )
 {
 	std::string str = s;
 	bool binary = false;
@@ -162,26 +167,26 @@ Assembler::convertNumber( const std::string& s )
 		str = s.substr( 1, s.length() - 1 );
 		binary = true;
 	}
-	checkLiteral( str );
+	checkLiteral( cmd, str );
 	return binary ? std::stoi( str, 0, 2 ) : std::stoi( str, 0, 0 );
 }
 
 void
 Assembler::checkOrig()
 {
-	const std::vector<std::string> fst = tokens[0];
+	const std::vector<std::string> fst = tokens[0].tokens;
 	if ( fst[0] != ".ORIG" )
 	{
-		throw std::runtime_error( "First command must be an .ORIG directive" );
+		errorMessage( tokens[0], "First command must be an .ORIG directive" );
 	}
 	else if ( fst.size() != 2 )
 	{
-		throw std::runtime_error( ".ORIG requires one argument" );
+		errorMessage( tokens[0], ".ORIG requires one argument" );
 	}
-	const int addr = convertNumber( fst[1] );
+	const int addr = convertNumber( tokens[0], fst[1] );
 	if ( addr < 0x3000 || addr > 0xFDFF )
 	{
-		throw std::runtime_error( "Address out of bounds" );
+		errorMessage( tokens[0], "Address out of bounds: " + std::to_string( addr ) );
 	}
 	start = addr;
 }
@@ -189,14 +194,14 @@ Assembler::checkOrig()
 void
 Assembler::checkEnd()
 {
-	const std::vector<std::string> end = tokens[tokens.size() - 1];
+	const std::vector<std::string> end = tokens[tokens.size() - 1].tokens;
 	if ( end[0] != ".END" )
 	{
-		throw std::runtime_error( "Last command must be an .END directive" );
+		errorMessage( tokens[tokens.size() - 1], "Last command must be an .END directive" );
 	}
 	else if ( end.size() != 1 )
 	{
-		throw std::runtime_error( ".END requires no arguments" );
+		errorMessage( tokens[tokens.size() - 1], ".END requires no arguments" );
 	}
 }
 
@@ -204,17 +209,18 @@ void
 Assembler::buildTable()
 {
 	int j = start;
-	for ( std::vector<std::vector<std::string>>::size_type i = 1; i < tokens.size(); i++ )
+	for ( std::vector<Command>::size_type i = 1; i < tokens.size(); i++ )
 	{
-		const std::vector<std::string> v = tokens[i];
-		if ( v[0][v[0].length() - 1] == ':' )
+		const Command cmd = tokens[i];
+		const std::vector<std::string> v = cmd.tokens;
+		if ( cmd.isLabel )
 		{
 			const std::string label = v[0].substr( 0, v[0].length() - 1 );
 			symbolTable.insert( std::pair<std::string, int>( label, j ) );
 		}
-		if ( v[0][0] == '.' || ( v.size() > 1 && v[1][0] == '.' ) )
+		if ( cmd.isDirective )
 		{
-			const std::string dir = v[0][0] == '.' ? v[0] : v[1];
+			const std::string dir = cmd.isLabel ? v[1] : v[0];
 			if ( dir == ".FILL" )
 			{
 				j++;
@@ -229,7 +235,7 @@ Assembler::buildTable()
 			}
 			else if ( dir != ".ORIG" && dir != ".END" )
 			{
-				throw std::runtime_error( "Invalid directive " + dir + " at command " + std::to_string( i ) );
+				errorMessage( cmd, "Invalid directive: " + dir );
 			}
 		}
 		else
@@ -258,28 +264,28 @@ Assembler::secondPass()
 	const std::string outName = inName.substr( 0, inName.rfind( '.' ) ) + ".obj";
 	std::ofstream f;
 	f.open( outName, std::ios::binary );
-	unsigned short origin = convertNumber( tokens[0][1] );
+	unsigned short origin = convertNumber( tokens[0], tokens[0].tokens[1] );
 	toLittleEndian( origin );
 	f.write( reinterpret_cast<const char*>( &origin ),  sizeof origin );
-	for ( std::vector<std::vector<std::string>>::size_type i = 1; i < tokens.size(); i++ )
+	for ( std::vector<Command>::size_type i = 1; i < tokens.size(); i++ )
 	{
-		handleTokens( i, tokens[i], f );
+		handleTokens( tokens[i], f );
 	}
 	f.close();
 }
 
 void
-Assembler::handleTokens( const int& i, const std::vector<std::string>& tokens, std::ofstream& stream )
+Assembler::handleTokens( const Command& cmd, std::ofstream& stream )
 {
-	if ( tokens[0][0] == '.' || ( tokens.size() > 1 && tokens[1][0] == '.' ) )
+	if ( cmd.isDirective )
 	{
-		handleDirectives( tokens, stream );
+		handleDirectives( cmd, stream );
 	} 
-	else if ( tokens[0][tokens[0].length() - 1] != ':' || ( tokens.size() > 1 && tokens[1][tokens[1].length() - 1] != ':' ) )
+	else
 	{
-		const int fst = tokens[0][tokens[0].length() - 1] != ':' ? 0 : 1;
-		const std::string cmd = tokens[fst];
-		const int opcode = getOpcode( cmd );
+		const int i = cmd.isLabel ? 1 : 0;
+		const std::string fst = cmd.tokens[i];
+		const int opcode = getOpcode( cmd, fst );
 		const unsigned short opbit = 1 << opcode;
 		int args = 1;
 		if ( opbit & 0xE2 )
@@ -290,76 +296,76 @@ Assembler::handleTokens( const int& i, const std::vector<std::string>& tokens, s
 		{
 			args = 3;
 		}
-		else if ( opbit & 0x1011 || cmd == "TRAP" )
+		else if ( opbit & 0x1011 || fst == "TRAP" )
 		{
 			args = 2;
 		}
-		argumentsCheck( tokens[0], tokens.size(), args + fst );
+		argumentsCheck( cmd, fst, cmd.tokens.size() - 1 - i, args - 1 );
 		short r0, r1, r2, target;
 		unsigned short val = opcode << 12;
-		if ( opbit & 0x5EEE || cmd == "JSRR" )
+		if ( opbit & 0x5EEE || fst == "JSRR" )
 		{
-			checkRegister( tokens[fst + 1] );
-			r0 = std::stoi( std::string( 1, tokens[fst + 1][1] ) );
-			const int shift = cmd == "JSRR" || cmd == "JMP" ? 6 : 9;
+			registerCheck( cmd, cmd.tokens[i + 1] );
+			r0 = std::stoi( std::string( 1, cmd.tokens[i + 1][1] ) );
+			const int shift = fst == "JSRR" || fst == "JMP" ? 6 : 9;
 			val |= r0 << shift;
 		}
 		if ( opbit & 0x2E2 )
 		{
-			checkRegister( tokens[fst + 2] );
-			r1 = std::stoi( std::string( 1, tokens[fst + 2][1] ) );
+			registerCheck( cmd, cmd.tokens[i + 2] );
+			r1 = std::stoi( std::string( 1, cmd.tokens[i + 2][1] ) );
 			val |= r1 << 6;
 		} 
-		if ( opbit & 0x4C0D || cmd == "JSR" )
+		if ( opbit & 0x4C0D || fst == "JSR" )
 		{
-			const int x = cmd == "JSR" || opcode == BR ? 1 : 2;
-			target = checkSymbol( tokens[fst + x] ) ? symbolTable.at( tokens[fst + x] ) - start - i : convertNumber( tokens[fst + x] );
-			const int len = cmd == "JSR" ? 11 : 9;
-			checkOperand( target, len, true );			
+			const int x = fst == "JSR" || opcode == BR ? 1 : 2;
+			target = checkSymbol( cmd.tokens[i + x] ) ? symbolTable.at( cmd.tokens[i + x] ) - start - cmd.n : convertNumber( cmd, cmd.tokens[i + x] );
+			const int len = fst == "JSR" ? 11 : 9;
+			checkOperand( cmd, target, len, true );			
 			target &= ( 1 << len ) - 1; 
-			target = cmd == "JSR" ? target | 1 << 11 : target;
+			target = fst == "JSR" ? target | 1 << 11 : target;
 			val |= target;
 		}
-		if ( cmd == "AND" || cmd == "ADD" )
+		if ( fst == "AND" || fst == "ADD" )
 		{
-			const bool imm = !checkRegister( tokens[fst + 3] );
-			r2 = imm ? convertNumber( tokens[fst + 3] ) : std::stoi( std::string( 1, tokens[fst + 3][1] ) );	
+			const bool imm = !checkRegister( cmd.tokens[i + 3] );
+			r2 = imm ? convertNumber( cmd, cmd.tokens[i + 3] ) : std::stoi( std::string( 1, cmd.tokens[i + 3][1] ) );	
 			if ( imm )
 			{
-				checkOperand( r2, 5, true );
+				checkOperand( cmd, r2, 5, true );
 				r2 &= 0x1F;
 			}
 			val |= r2;
 			val = imm ? val | 1 << 5 : val;
 		} 
-		else if ( cmd == "LDR" || cmd == "STR" )
+		else if ( fst == "LDR" || fst == "STR" )
 		{
-			int offset = convertNumber( tokens[fst + 3] );
-			checkOperand( offset, 6, true );
+			int offset = convertNumber( cmd, cmd.tokens[i + 3] );
+			checkOperand( cmd, offset, 6, true );
 			offset &= 0x3F;
 			val |= offset;
 		} 
-		else if ( cmd == "NOT" )
+		else if ( fst == "NOT" )
 		{
 			val |= 0x3F;
 		}
-		else if ( cmd == "RET" )
+		else if ( fst == "RET" )
 		{
 			val |= 7 << 6;
 		}
-		else if ( cmd == "TRAP" )
+		else if ( fst == "TRAP" )
 		{
-			const unsigned short tv = convertNumber( tokens[fst + 1] );
-			checkOperand( tv, 8, false );
+			const unsigned short tv = convertNumber( cmd, cmd.tokens[i + 1] );
+			checkOperand( cmd, tv, 8, false );
 			val |= tv;
 		}
 		else if ( opcode == BR )
 		{
-			val |= getMask( cmd );	
+			val |= getMask( fst );	
 		}
 		else if ( opcode == TRAP )
 		{
-			val |= getVector( cmd ); 
+			val |= getVector( fst ); 
 		}
 
 		toLittleEndian( val );
@@ -368,25 +374,25 @@ Assembler::handleTokens( const int& i, const std::vector<std::string>& tokens, s
 }
 
 int
-Assembler::getVector( const std::string& cmd )
+Assembler::getVector( const std::string& fst )
 {
-	if ( cmd == "GETC" )
+	if ( fst == "GETC" )
 	{
 		return 0x20;
 	} 
-	else if ( cmd == "OUT" )
+	else if ( fst == "OUT" )
 	{
 		return 0x21;
 	}
-	else if ( cmd == "PUTS" )
+	else if ( fst == "PUTS" )
 	{
 		return 0x22;
 	}
-	else if ( cmd == "IN" )
+	else if ( fst == "IN" )
 	{
 		return 0x23;
 	}
-	else if ( cmd == "PUTSP" )
+	else if ( fst == "PUTSP" )
 	{
 		return 0x24;
 	}
@@ -397,29 +403,29 @@ Assembler::getVector( const std::string& cmd )
 }
 
 int
-Assembler::getMask( const std::string& cmd )
+Assembler::getMask( const std::string& fst )
 {
-	if ( cmd == "BR" || cmd == "BRnzp" )
+	if ( fst == "BR" || fst == "BRnzp" )
 	{
 		return BRnzp;
 	}
-	else if ( cmd == "BRp" )
+	else if ( fst == "BRp" )
 	{
 		return BRp;
 	}
-	else if ( cmd == "BRz" )
+	else if ( fst == "BRz" )
 	{
 		return BRz;
 	} 
-	else if ( cmd == "BRn" )
+	else if ( fst == "BRn" )
 	{
 		return BRn;
 	}
-	else if ( cmd == "BRzp" )
+	else if ( fst == "BRzp" )
 	{
 		return BRzp;
 	}
-	else if ( cmd == "BRnp" )
+	else if ( fst == "BRnp" )
 	{
 		return BRnp;
 	} 
@@ -430,102 +436,103 @@ Assembler::getMask( const std::string& cmd )
 }
 
 int
-Assembler::getOpcode( const std::string& cmd )
+Assembler::getOpcode( const Command& cmd, const std::string& fst )
 {
-	if ( cmd == "BR" || cmd == "BRp" || cmd == "BRz" || cmd == "BRn"
-		|| cmd == "BRzp" || cmd == "BRnp" || cmd == "BRnz" || cmd == "BRnzp" )
+	if ( fst == "BR" || fst == "BRp" || fst == "BRz" || fst == "BRn"
+		|| fst == "BRzp" || fst == "BRnp" || fst == "BRnz" || fst == "BRnzp" )
 	{
 		return BR;
 	}
-	else if ( cmd == "ADD" )
+	else if ( fst == "ADD" )
 	{
 		return ADD;
 	}
-	else if ( cmd == "LD" )
+	else if ( fst == "LD" )
 	{
 		return LD;
 	}
-	else if ( cmd == "ST" )
+	else if ( fst == "ST" )
 	{
 		return ST;
 	}
-	else if ( cmd == "JSR" || cmd == "JSRR" )
+	else if ( fst == "JSR" || fst == "JSRR" )
 	{
 		return JSR;
 	}
-	else if ( cmd == "AND" )
+	else if ( fst == "AND" )
 	{
 		return AND;
 	}
-	else if ( cmd == "LDR" )
+	else if ( fst == "LDR" )
 	{
 		return LDR;
 	}
-	else if ( cmd == "STR" )
+	else if ( fst == "STR" )
 	{
 		return STR;
 	}
-	else if ( cmd == "RTI" )
+	else if ( fst == "RTI" )
 	{
 		return RTI;
 	}
-	else if ( cmd == "NOT" )
+	else if ( fst == "NOT" )
 	{
 		return NOT;
 	}
-	else if ( cmd == "LDI" )
+	else if ( fst == "LDI" )
 	{
 		return LDI;
 	}
-	else if ( cmd == "STI" )
+	else if ( fst == "STI" )
 	{
 		return STI;
 	}
-	else if ( cmd == "JMP" )
+	else if ( fst == "JMP" )
 	{
 		return JMP;
 	}
-	else if ( cmd == "RES" )
+	else if ( fst == "RES" )
 	{
 		return RES;
 	}
-	else if ( cmd == "LEA" )
+	else if ( fst == "LEA" )
 	{
 		return LEA;
 	}
-	else if ( cmd == "TRAP" || cmd == "GETC" || cmd == "OUT" || cmd == "PUTS"
-		|| cmd == "IN" || cmd == "PUTSP" || cmd == "HALT" )
+	else if ( fst == "TRAP" || fst == "GETC" || fst == "OUT" || fst == "PUTS"
+		|| fst == "IN" || fst == "PUTSP" || fst == "HALT" )
 	{
 		return TRAP;
 	}
-	throw std::runtime_error( "Command: " + cmd + " not recognised" );
+	errorMessage( cmd, "Unknown Command: " + fst );
+	return 0;
 }
 
 void
-Assembler::handleDirectives( const std::vector<std::string>& tokens, std::ofstream& stream )
+Assembler::handleDirectives( const Command& cmd, std::ofstream& stream )
 {
-	const std::string dir = tokens[0][0] == '.' ? tokens[0] : tokens[1];
+	const std::string dir = cmd.isLabel ? cmd.tokens[1] : cmd.tokens[0];
 	if ( dir == ".ORIG" )
 	{
-		throw std::runtime_error( "More than one .ORIG" );
+		errorMessage( cmd, "More than one .ORIG in program" );
 	}
 	else if ( dir == ".FILL" )
 	{
-		unsigned short val = convertNumber( tokens[tokens.size() - 1] );
+		unsigned short val = convertNumber( cmd, cmd.tokens[cmd.tokens.size() - 1] );
 		toLittleEndian( val );
 		stream.write( reinterpret_cast<const char*>( &val ),  sizeof val );
 	}
 	else if ( dir == ".BLKW" )
 	{
 		const unsigned short zero = 0;
-		for ( int i = 0; i < std::stoi( tokens[tokens.size() - 1] ); i++ )
+		for ( int i = 0; i < std::stoi( cmd.tokens[cmd.tokens.size() - 1] ); i++ )
 		{
 			stream.write( reinterpret_cast<const char*>( &zero ), sizeof zero );
 		}
 	}
 	else if ( dir == ".STRINGZ" )
 	{
-		const std::string str = tokens[tokens.size() - 1];
+		const std::string str = cmd.tokens[cmd.tokens.size() - 1];
 		for ( std::string::size_type i = 0; i < str.size(); i++ )
 		{
 			unsigned short c = str[i];
@@ -542,7 +549,7 @@ Assembler::handleDirectives( const std::vector<std::string>& tokens, std::ofstre
 	}
 	else if ( dir != ".END" )
 	{
-		throw std::runtime_error( "Unknown directive: " + dir );
+		errorMessage( cmd, "Unknown directive: " + dir );
 	}
 }
 
@@ -567,12 +574,12 @@ Assembler::checkSymbol( const std::string& symbol )
 }
 
 void
-Assembler::checkOperand( const int& operand, const int& bits, const bool& isSigned )
+Assembler::checkOperand( const Command& cmd, const int& operand, const int& bits, const bool& isSigned )
 {
 	bool predicate = isSigned ? operand < -( 2 << ( bits - 1 ) ) || operand > ( 2 << ( bits - 1 ) ) - 1 : operand < 0 || operand > ( 2 << ( bits ) ) - 1;
 	if ( predicate )
 	{
-		throw std::runtime_error( "Operand: " + std::to_string( operand ) + " cannot be represented in " + std::to_string( bits ) + " bits" );
+		errorMessage( cmd, "Operand: " + std::to_string( operand ) + " cannot be represented in " + std::to_string( bits ) + " bits" );
 	}
 }
 
@@ -583,19 +590,25 @@ Assembler::checkRegister( const std::string& reg )
 }
 
 void
-Assembler::registerCheck( const std::string& reg )
+Assembler::registerCheck( const Command& cmd, const std::string& reg )
 {
 	if ( !checkRegister( reg ) )
 	{
-		throw std::runtime_error( "Invalid register: " + reg );
+		errorMessage( cmd, "Invalid register: " + reg );
 	}
 }
 
 void
-Assembler::argumentsCheck( const std::string& cmd, const int& length, const int& n )
+Assembler::argumentsCheck( const Command& cmd, const std::string& fst, const int& length, const int& n )
 {
 	if ( length != n )
 	{
-		throw std::runtime_error( std::to_string( length ) + " arguments provided to " + cmd + ", " + std::to_string( n ) + " arguments required" );
+		errorMessage( cmd, std::to_string( length ) + " arguments provided to " + fst + ", " + std::to_string( n ) + " arguments required" );
 	}
+}
+
+void
+Assembler::errorMessage( const Command& cmd, const std::string& err )
+{
+	throw std::runtime_error( "Error on line " + std::to_string( cmd.line ) + " : " + cmd.cmd + '\n' + err );
 }

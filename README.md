@@ -9,8 +9,8 @@ The implementation of the virtual machine was based on Justin Meiners' [guide](h
     gcc main.cc CPU.cc platform.cc -o main -std=c++17 -Wall -lstdc++ -lm
 
 ### Assembler
-    g++ main.cc Assembler.cc -o main -std=c++17 -Wall
-    gcc main.cc Assembler.cc -o main -std=c++17 -Wall -lstdc++
+    g++ main.cc Assembler.cc Command.cc -o main -std=c++17 -Wall
+    gcc main.cc Assembler.cc Command.cc -o main -std=c++17 -Wall -lstdc++
 
 ## Usage
 ### Virtual Machine
